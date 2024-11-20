@@ -5,12 +5,16 @@ import datetime
 from dotenv import load_dotenv
 import os
 
-
 load_dotenv()
-
 
 API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
 BASE_URL = "https://www.alphavantage.co/query"
+
+def get_next_trading_day(prices_df, reported_date):
+    
+    while reported_date not in prices_df.index:
+        reported_date += pd.Timedelta(days=1)
+    return reported_date
 
 def fetch_earningcalls(symbol):
     params = {
@@ -50,8 +54,7 @@ def return_on_earning(symbol):
   
     for index, row in earnings_df.iterrows():
         reported_date = row["reportedDate"]
-        if row["reportTime"] != "pre-market":
-            reported_date += pd.Timedelta(days=1)
+        reported_date = get_next_trading_day(prices_df, reported_date)
         
         open_price = prices_df.loc[reported_date, "1. open"]
         close_price = prices_df.loc[reported_date, "4. close"]
@@ -64,4 +67,30 @@ def return_on_earning(symbol):
     return earnings_df
 
         
-            
+def visualize_results(earnings_df):
+    # Filter DataFrame based on the 'beat' column
+    beat_true = earnings_df[earnings_df["beat"] == True]["Change (%)"].dropna()
+    beat_false = earnings_df[earnings_df["beat"] == False]["Change (%)"].dropna()
+
+   
+    plt.figure(figsize=(12, 6))
+    
+
+    plt.hist(beat_true, bins=20, alpha=0.7, label="Earnings Beat (True)", color="green", edgecolor="black")
+    
+
+    plt.hist(beat_false, bins=20, alpha=0.7, label="Earnings Beat (False)", color="red", edgecolor="black")
+    
+
+    plt.title("Distribution of Next-Day Performance After Earnings Beats")
+    plt.xlabel("Change (%)")
+    plt.ylabel("Frequency")
+    plt.legend()
+    plt.grid(axis="y", alpha=0.75)
+    plt.show()
+
+if __name__ == "__main__":
+    symbol = "AAPL"  # Example: Apple Inc.
+    results = return_on_earning(symbol)
+    print(results)
+    visualize_results(results)
