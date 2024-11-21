@@ -114,13 +114,13 @@ def visualize_results(earnings_df):
     print(beat_false)
     print(beat_true)
 
-    print(f"Average return for earnings beats (True): {beat_true.mean():.2f}%")
-    print(f"Average return for earnings misses (False): {beat_false.mean():.2f}%")
+    print(f"Average return for earnings beats: {beat_true.mean():.2f}%")
+    print(f"Average return for earnings misses: {beat_false.mean():.2f}%")
 
     plt.figure(figsize=(12, 6))
     plt.hist(beat_true, bins=20, alpha=0.7, label="Earnings Beat (True)", color="green", edgecolor="black")
     plt.hist(beat_false, bins=20, alpha=0.7, label="Earnings Beat (False)", color="red", edgecolor="black")
-    plt.title("Distribution of Next-Day Performance After Earnings Beats")
+    plt.title("Distribution of Returns Day After Earnings")
     plt.xlabel("Change (%)")
     plt.ylabel("Frequency")
     plt.legend()
