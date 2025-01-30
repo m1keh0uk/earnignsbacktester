@@ -8,39 +8,25 @@ load_dotenv()
 
 def get_input_period():
     print("Select the holding period for the strategy:")
-    print("1: Whole day")
-    print("2: One week")
-    print("3: One hour")
-    print("4: Five minutes")
+    print("1: Minutes")
+    print("2: Days")
     choice = input("Enter your choice (1-4): ")
     periods = {
-        '1': '1d',
-        '2': '1w',
-        '3': '1h',
-        '4': '5min'
+        '1': 'm',
+        '2': 'd',
     }
-    return periods.get(choice, '1d')
+    return periods.get(choice, 'd')
 
 def get_next_trading_day(prices_df, reported_date):
     max_date = prices_df.index.max()  # Get the maximum date in the prices DataFrame
-    while reported_date not in prices_df.index:
+    while reported_date not in prices_df.index or reported_date.weekday() > 4:  # Skip weekends (Monday=0, Sunday=6)
         reported_date += pd.Timedelta(days=1)
         if reported_date > max_date:  # Stop if reported_date exceeds the available data range
             raise ValueError(f"Exceeded available dates in prices data. Last date in data: {max_date}")
+            return "break"
     return reported_date
 
 def get_trade_minute(df):
-    return
-
-def calculate_cumulative_pnl(df):
-    df = pd.DataFrame(df)
-    df = df.sort_values(by='dateExecuted', ascending=True)
-    df['Cumulative PnL'] = df['PnL'].cumsum()
-    return df
-
-def calculate_sharpe(df):
-    std = df["change (%)"].std()
-    mean = df["Change (%)"].std()
     return
 
 def fetch_earningcalls(symbol, API_KEY):
@@ -57,7 +43,7 @@ def fetch_earningcalls(symbol, API_KEY):
 
 def fetch_spot_from_h5(symbol, period):
     #Fetch stock data from the .h5 file
-    if period == "5min":
+    if period == "m":
         data_frequency = "minute"
     else:
         data_frequency = "daily"
@@ -75,7 +61,7 @@ def fetch_spot_from_h5(symbol, period):
 
     return df
    
-def return_on_earning(symbol, API_KEY, prices_df, frequency):
+def return_on_earning(symbol, API_KEY, prices_df, frequency, holding_period):
     earnings_df = fetch_earningcalls(symbol, API_KEY)
     earnings_df["reportedDate"] = pd.to_datetime(earnings_df["reportedDate"], errors="coerce")
     earnings_df = earnings_df.dropna(subset=["reportedDate"])
@@ -85,16 +71,18 @@ def return_on_earning(symbol, API_KEY, prices_df, frequency):
     earnings_df["estimatedEPS"] = pd.to_numeric(earnings_df["estimatedEPS"].replace("None", pd.NA), errors='coerce')
     earnings_df["beat"] = earnings_df["reportedEPS"] > earnings_df["estimatedEPS"]
     
-    return process_earnings(earnings_df, prices_df, symbol, frequency)
+    return process_earnings(earnings_df, prices_df, symbol, frequency, holding_period)
    
-def process_earnings(earnings_df, prices_df, symbol, frequency):
+def process_earnings(earnings_df, prices_df, symbol, frequency, holding_period):
     number_of_shares = 100
-
     trading_log = []
 
     for index, row in earnings_df.iterrows():
         prices_df.index = prices_df.index.normalize()
         reported_date = row["reportedDate"].normalize()
+
+        trading_dates = []
+
         if reported_date not in prices_df.index:
             print(f"Warning: Reported date {reported_date} not found in price data. Skipping.")
             continue
@@ -103,10 +91,14 @@ def process_earnings(earnings_df, prices_df, symbol, frequency):
         if report_time == "post-market":
             reported_date = reported_date + pd.Timedelta(days=1)
 
-        if frequency == '1d':
-            trading_dates = [get_next_trading_day(prices_df, reported_date)]
-        elif frequency == '1w':
-            trading_dates = [get_next_trading_day(prices_df, reported_date + pd.Timedelta(days=i)) for i in range(5)]
+        if frequency == 'd':
+            i = 0
+            while len(trading_dates) < holding_period:
+                next_date = get_next_trading_day(prices_df, reported_date + pd.Timedelta(days=i))
+                if next_date not in trading_dates:
+                    trading_dates.append(next_date)
+                i += 1
+                
         elif frequency == '1h' or frequency == '5min':
             trading_dates = [get_next_trading_day(prices_df, reported_date)]
             trade_times = get_trade_minute()
@@ -118,18 +110,19 @@ def process_earnings(earnings_df, prices_df, symbol, frequency):
             close_price = prices_df.loc[date, "4. close"]
 
             if row["beat"]:
-                pnl = number_of_shares * (close_price - open_price) 
+                pnl = number_of_shares * (close_price - open_price)
+                position = "long"
             else:
                 pnl = number_of_shares * (open_price - close_price)
+                position = "long"
             
-            position = "long" if row["beat"] else "short"
-
             trading_dict = {
                 "dateExecuted": date,
                 "Position": position,
                 "Stock": symbol,
-                "Open": open_price,
-                "Close": close_price,
+                "Open": f"${open_price:.2f}",
+                "Close": f"${close_price:.2f}",
+                "Amount Invested": open_price * 100,
                 "Change (%)": ((close_price - open_price) / open_price) * 100,
                 "PnL": pnl
             }
@@ -137,13 +130,18 @@ def process_earnings(earnings_df, prices_df, symbol, frequency):
 
     return pd.DataFrame(trading_log)
 
+def calculate_cumulative_pnl(df):
+    df = pd.DataFrame(df)
+    df = df.sort_values(by='dateExecuted', ascending=True)
+    df['Cumulative PnL'] = df['PnL'].cumsum()
+    return df
+
+def calculate_return(df):
+    df['Amount Invested'] = pd.to_numeric(df['Amount Invested'], errors='coerce')
+    return df['Cumulative Pnl'].iloc[-1]/df['Amount Invested'].sum
+
 def calculate_sharpe_ratio(df, risk_free_rate=0.01):
-
-    df['Previous Cumulative PnL'] = df['Cumulative PnL'].shift(1)
-    df['Daily Return'] = df['PnL'] / df['Previous Cumulative PnL'].replace(0, 1)  # avoid division by zero
-
-    if df.iloc[0]['Previous Cumulative PnL'] == 0:
-        df.at[0, 'Daily Return'] = df.iloc[0]['PnL'] / df.iloc[0]['Cumulative PnL'] if df.iloc[0]['Cumulative PnL'] != 0 else 0
+    df['Daily Return'] = df['PnL'] / df['Amount Invested'].replace(0, 1)
     
     average_daily_return = df['Daily Return'].mean()
     daily_return_std_dev = df['Daily Return'].std()
@@ -197,7 +195,11 @@ if __name__ == "__main__":
     API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
     symbols = ["AAPL","WMT"] #adjust portfolio here. Manually change stocks
     
-    holding_period = get_input_period()
+    holding_period_type = get_input_period()
+    if holding_period_type == "d":
+        holding_period = int(input("Enter integer number of days:"))
+    if holding_period_type == "m":
+        holding_period = int(input("Enter integer number of minutes:"))
 
     all_pnl = []
     
@@ -205,8 +207,8 @@ if __name__ == "__main__":
         print("min")
     else:
         for symbol in symbols:
-            prices_df = fetch_spot_from_h5(symbol, holding_period)
-            trading_log = return_on_earning(symbol, API_KEY, prices_df, holding_period)
+            prices_df = fetch_spot_from_h5(symbol, holding_period_type)
+            trading_log = return_on_earning(symbol, API_KEY, prices_df, holding_period_type, holding_period)
             all_pnl.append(trading_log)
 
     combined_pnl = pd.concat(all_pnl)
