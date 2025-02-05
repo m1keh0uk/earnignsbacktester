@@ -26,9 +26,6 @@ def get_next_trading_day(prices_df, reported_date):
             return "break"
     return reported_date
 
-def get_trade_minute(df):
-    return
-
 def fetch_earningcalls(symbol, API_KEY):
     BASE_URL = "https://www.alphavantage.co/query"
 
@@ -64,19 +61,30 @@ def fetch_spot_from_h5(symbol, period):
 def return_on_earning(symbol, API_KEY, prices_df, frequency, holding_period):
     earnings_df = fetch_earningcalls(symbol, API_KEY)
     earnings_df["reportedDate"] = pd.to_datetime(earnings_df["reportedDate"], errors="coerce")
-    earnings_df = earnings_df.dropna(subset=["reportedDate"])
-    earnings_df = earnings_df[earnings_df["reportedDate"].isin(prices_df.index)]
+    earnings_df.dropna(subset=["reportedDate"], inplace=True)
+
+    # Adjust this line to account for minute-level data
+    if frequency == 'm':
+        # Normalize the price data index to just dates for comparison
+        normalized_dates = prices_df.index.normalize()
+        # Check if the normalized date is in the normalized index
+        earnings_df = earnings_df[earnings_df["reportedDate"].dt.normalize().isin(normalized_dates)]
+    else:
+        earnings_df = earnings_df[earnings_df["reportedDate"].isin(prices_df.index)]
+
     earnings_df["fiscalDateEnding"] = pd.to_datetime(earnings_df["fiscalDateEnding"], errors="coerce")
     earnings_df["reportedEPS"] = pd.to_numeric(earnings_df["reportedEPS"].replace("None", pd.NA), errors='coerce')
     earnings_df["estimatedEPS"] = pd.to_numeric(earnings_df["estimatedEPS"].replace("None", pd.NA), errors='coerce')
     earnings_df["beat"] = earnings_df["reportedEPS"] > earnings_df["estimatedEPS"]
     
-    return process_earnings(earnings_df, prices_df, symbol, frequency, holding_period)
-   
-def process_earnings(earnings_df, prices_df, symbol, frequency, holding_period):
-    number_of_shares = 100
+    if frequency =='d':
+        return process_earnings_d(earnings_df, prices_df, symbol, holding_period)
+    elif frequency == 'm':
+        return process_earnings_m(earnings_df, prices_df, symbol, holding_period)
+    
+def process_earnings_d(earnings_df, prices_df, symbol, holding_period):
+    number_of_shares = 100 #random number
     trading_log = []
-
     for index, row in earnings_df.iterrows():
         prices_df.index = prices_df.index.normalize()
         reported_date = row["reportedDate"].normalize()
@@ -91,18 +99,13 @@ def process_earnings(earnings_df, prices_df, symbol, frequency, holding_period):
         if report_time == "post-market":
             reported_date = reported_date + pd.Timedelta(days=1)
 
-        if frequency == 'd':
-            i = 0
-            while len(trading_dates) < holding_period:
-                next_date = get_next_trading_day(prices_df, reported_date + pd.Timedelta(days=i))
-                if next_date not in trading_dates:
-                    trading_dates.append(next_date)
-                i += 1
-                
-        elif frequency == '1h' or frequency == '5min':
-            trading_dates = [get_next_trading_day(prices_df, reported_date)]
-            trade_times = get_trade_minute()
-
+        i = 0
+        while len(trading_dates) < holding_period:
+            next_date = get_next_trading_day(prices_df, reported_date + pd.Timedelta(days=i))
+            if next_date not in trading_dates:
+                trading_dates.append(next_date)
+            i += 1
+  
         for date in trading_dates:
             if date not in prices_df.index:
                 continue
@@ -114,7 +117,7 @@ def process_earnings(earnings_df, prices_df, symbol, frequency, holding_period):
                 position = "long"
             else:
                 pnl = number_of_shares * (open_price - close_price)
-                position = "long"
+                position = "short"
             
             trading_dict = {
                 "dateExecuted": date,
@@ -128,6 +131,48 @@ def process_earnings(earnings_df, prices_df, symbol, frequency, holding_period):
             }
             trading_log.append(trading_dict)
 
+    return pd.DataFrame(trading_log)
+
+def process_earnings_m(earnings_df, prices_df, symbol, holding_period):
+   
+    trading_log = []
+    for index, row in earnings_df.iterrows():
+        prices_df.index = prices_df.index.normalize()
+        reported_date = row["reportedDate"].normalize()
+        if reported_date not in prices_df.index:
+            print(f"Warning: Reported date {reported_date} not found in price data. Skipping.")
+            continue
+        report_time = row["reportTime"]
+
+        if report_time == "post-market":
+            reported_date = reported_date + pd.Timedelta(days=1)
+  
+        trade_date = get_next_trading_day(prices_df, reported_date)
+
+        daily_rows = prices_df.loc[trade_date]
+        open_price = daily_rows.iloc[0]['1. open']
+        close_price = daily_rows.iloc[holding_period]['4. close'] #each row is a minute, take the first row, then count out the minutes
+        number_of_shares = 100 #random number
+
+        if row["beat"]:
+            pnl = number_of_shares * (close_price - open_price)
+            position = "long"
+        else:
+            pnl = number_of_shares * (open_price - close_price)
+            position = "short"
+        
+        trading_dict = {
+            "dateExecuted": trade_date,
+            "Position": position,
+            "Stock": symbol,
+            "Open": f"${open_price:.2f}",
+            "Close": f"${close_price:.2f}",
+            "Amount Invested": open_price * 100,
+            "Change (%)": ((close_price - open_price) / open_price) * 100,
+            "PnL": pnl
+        }
+        trading_log.append(trading_dict)
+    
     return pd.DataFrame(trading_log)
 
 def calculate_cumulative_pnl(df):
@@ -163,25 +208,6 @@ def calculate_profit_per_contract(df):
     profit_per_contract = total_pnl / number_of_contracts if number_of_contracts else 0
     return profit_per_contract
 
-def visualize_results(earnings_df, symbol):
-    plt.close('all')
-
-    beat_true = earnings_df[earnings_df["beat"] == True]["Change (%)"].dropna()
-    beat_false = earnings_df[earnings_df["beat"] == False]["Change (%)"].dropna()
-
-    print(f"\nBeats Earnings: \n\tAverage Return = {beat_true.mean():.2f}%\n\tStandard Deviation = {beat_true.std():.2f}%\n")
-    print(f"Misses Earnings: \n\tAverage Return = {beat_false.mean():.2f}%\n\tStandard Deviation = {beat_false.std():.2f}%")
-
-    plt.figure(figsize=(12, 6))
-    plt.hist(beat_true, bins=20, alpha=0.7, label="Earnings Beat (True)", color="green", edgecolor="black")
-    plt.hist(beat_false, bins=20, alpha=0.7, label="Earnings Beat (False)", color="red", edgecolor="black")
-    plt.title(f"Distribution of Returns Day After Earnings for {symbol}")
-    plt.xlabel("Change (%)")
-    plt.ylabel("Frequency")
-    plt.legend()
-    plt.grid(axis="y", alpha=0.75)
-    plt.show()
-
 def plot_pnl(df):
     plt.figure(figsize=(12, 6))
     plt.plot(df['dateExecuted'], df['Cumulative PnL'], marker='o', linestyle='-', color='blue')
@@ -193,8 +219,13 @@ def plot_pnl(df):
 
 if __name__ == "__main__":
     API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
-    symbols = ["AAPL","WMT"] #adjust portfolio here. Manually change stocks
+    '''
+    Adjust portfolio below by manually entering ticker. For minute strategy, only avaible 
+    tickers are WMT and AAPL (size constraint). See data folder for avaible tickers.
+    '''
     
+    symbols = ["WMT", "AAPL"] 
+                    
     holding_period_type = get_input_period()
     if holding_period_type == "d":
         holding_period = int(input("Enter integer number of days:"))
@@ -203,13 +234,11 @@ if __name__ == "__main__":
 
     all_pnl = []
     
-    if holding_period == "5min":
-        print("min")
-    else:
-        for symbol in symbols:
-            prices_df = fetch_spot_from_h5(symbol, holding_period_type)
-            trading_log = return_on_earning(symbol, API_KEY, prices_df, holding_period_type, holding_period)
-            all_pnl.append(trading_log)
+
+    for symbol in symbols:
+        prices_df = fetch_spot_from_h5(symbol, holding_period_type)
+        trading_log = return_on_earning(symbol, API_KEY, prices_df, holding_period_type, holding_period)
+        all_pnl.append(trading_log)
 
     combined_pnl = pd.concat(all_pnl)
     combined_pnl = calculate_cumulative_pnl(combined_pnl)
