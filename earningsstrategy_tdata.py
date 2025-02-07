@@ -105,7 +105,7 @@ def process_earnings_d(earnings_df, prices_df, symbol, holding_period):
             if next_date not in trading_dates:
                 trading_dates.append(next_date)
             i += 1
-  
+
         for date in trading_dates:
             if date not in prices_df.index:
                 continue
@@ -130,7 +130,7 @@ def process_earnings_d(earnings_df, prices_df, symbol, holding_period):
                 "PnL": pnl
             }
             trading_log.append(trading_dict)
-
+    print(symbol, trading_dates)
     return pd.DataFrame(trading_log)
 
 def process_earnings_m(earnings_df, prices_df, symbol, holding_period):
@@ -157,12 +157,15 @@ def process_earnings_m(earnings_df, prices_df, symbol, holding_period):
         if row["beat"]:
             pnl = number_of_shares * (close_price - open_price)
             position = "long"
+            earnings = "beat"
         else:
             pnl = number_of_shares * (open_price - close_price)
             position = "short"
+            earnings = "miss"
         
         trading_dict = {
             "dateExecuted": trade_date,
+            "earnings": earnings,
             "Position": position,
             "Stock": symbol,
             "Open": f"${open_price:.2f}",
@@ -209,8 +212,13 @@ def calculate_profit_per_contract(df):
     return profit_per_contract
 
 def plot_pnl(df):
+    # Ensure 'dateExecuted' is a datetime type for proper plotting
+    df['dateExecuted'] = pd.to_datetime(df['dateExecuted'])
+    # Group by date and sum the 'Cumulative PnL'
+    grouped_df = df.groupby('dateExecuted').agg({'Cumulative PnL': 'last'}).reset_index()
+
     plt.figure(figsize=(12, 6))
-    plt.plot(df['dateExecuted'], df['Cumulative PnL'], marker='o', linestyle='-', color='blue')
+    plt.plot(grouped_df['dateExecuted'], grouped_df['Cumulative PnL'], marker='o', linestyle='-', color='blue')
     plt.title("Cumulative P&L Over Time")
     plt.xlabel("Date")
     plt.ylabel("Cumulative P&L ($)")
