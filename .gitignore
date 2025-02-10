@@ -2,4 +2,9 @@
 .env
 test.py
 earningstest.py
+earnings.py
+earnings_json.py
+earningsstrategy_tdata.py
 Combined_Portfolio_PnL.csv
+Performance_Metrics.csv
+Portfolio_Return.csv
