@@ -264,7 +264,7 @@ if __name__ == "__main__":
     '''
     Adjust portfolio below by manually entering ticker. See data folder for avaible tickers.
     '''
-    symbols = ["AAPl", "BLK", "CVX", "D", "DE", "LUV", "NFLX", "NKE", "PG", "WMT"]
+    symbols = ["AAPL", "BLK", "CVX", "D", "DE", "LUV", "NFLX", "NKE", "PG", "WMT", "AMZN", "MSFT", "BAC", "JPM", "V", "MA", "INTC", "AMD", "CSCO", "PFE", "GILD", "ADBE", "DIS", "IBM", "ORCL", "XOM", "BA"]
     #holding_period_type = get_input_period()
 
     # if holding_period_type == "d":
@@ -273,7 +273,7 @@ if __name__ == "__main__":
     #     holding_period = int(input("Enter integer number of minutes:"))
 
     holding_period_type = 'd'
-    for i in range(10):
+    for i in range(5):
         holding_period = i + 1
         all_pnl = []
 
