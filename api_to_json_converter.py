@@ -32,6 +32,9 @@ def fetch_earningcalls(symbol, data_dir):
 
 if __name__ == "__main__":
     BASE_URL = "https://www.alphavantage.co/query"
-    symbol = input("Enter ticker: ").strip().upper()
-    data_dir = "data/earnings"  # Directory where the data will be saved
-    print(fetch_earningcalls(symbol, data_dir))
+
+    #symbols = ["AXP", "CAT", "CFG", "CRWD", "DD", "ETSY", "GOOGL","GS", "JNJ", "LMT", "MRK", "NEE", "NEM", "RHP", "SBUX", "SO", "SPG", "SQ", "TGT", "TM", "WYNN"]
+    symbols = ["ABT"]
+    for symbol in symbols:
+        data_dir = "data/earnings"  # Directory where the data will be saved
+        print(fetch_earningcalls(symbol, data_dir))

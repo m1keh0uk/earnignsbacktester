@@ -5,7 +5,12 @@ earningstest.py
 earnings.py
 earnings_json.py
 earningsstrategy_tdata.py
+earningsMAXXX.py
+trim_h5.py
+yearly.csv
+yearly_pls.csv
 Combined_Portfolio_PnL.csv
 Performance_Metrics.csv
 Portfolio_Return.csv
 Performance_report.xlsx
+data/

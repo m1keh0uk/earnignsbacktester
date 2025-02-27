@@ -1,6 +1,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import statsmodels.api as sm
+import numpy as np
 from dotenv import load_dotenv
 import os
 import json
@@ -165,7 +166,7 @@ def process_earnings_d(earnings_df, prices_df, symbol, holding_period, strat):
                 continue
             open_price = prices_df.loc[trade_date, "1. open"]
             close_price = prices_df.loc[trade_date, "4. close"]
-            number_of_shares = calculate_position_size(portfolio_value, open_price, 25)
+            number_of_shares = calculate_position_size(portfolio_value, open_price, 5)
 
             #set strategy here
             position, pnl = globals()[strat](row, open_price, close_price, number_of_shares)
@@ -215,7 +216,7 @@ def process_earnings_m(earnings_df, prices_df, symbol, holding_period, strat):
         daily_rows = prices_df.loc[trade_date]
         open_price = daily_rows.iloc[0]['1. open']
         close_price = daily_rows.iloc[holding_period]['4. close'] #each row is a minute, take the first row, then count out the minutes
-        number_of_shares = calculate_position_size(portfolio_value, open_price, 35) #last value = %of portfolio value invested each trade
+        number_of_shares = calculate_position_size(portfolio_value, open_price, 15) #last value = %of portfolio value invested each trade
 
         position, pnl = globals()[strat](row, open_price, close_price, number_of_shares)
         if position == "pass":
@@ -246,10 +247,17 @@ def calculate_cumulative_pnl(df):
     df['Cumulative PnL'] = df['PnL'].cumsum()
     return df
 
-def calculate_sharpe_ratio(df):
+def calculate_sharpe_ratio(df, type, period, trades):
+    risk_free_rate = 0.0
+    mean_daily_returns = df['Return'].mean()
+    std_dev_daily_returns = df['Return'].std()
+    daily_sharpe = (mean_daily_returns - risk_free_rate) / std_dev_daily_returns
+    sharpe = (mean_daily_returns - risk_free_rate) * np.sqrt(252) / std_dev_daily_returns
+
+
+
     df['dateExecuted'] = pd.to_datetime(df['dateExecuted'])
     total_return = (df['Portfolio Value'].iloc[-1] - 100000) / 100000
-    avg_return = total_return / 6
 
     df['Year'] = df['dateExecuted'].dt.year
     df.sort_values('dateExecuted', inplace=True)
@@ -263,9 +271,14 @@ def calculate_sharpe_ratio(df):
     
     yearly_data['Yearly Return'] = yearly_data['Portfolio Value'].pct_change()
 
-    sharpe = avg_return / yearly_data['Yearly Return'].std()
+     #anualized sharpe ratio
+
+    print("Average daily portfolio returns:", mean_daily_returns * 100, "%")
+    print("Daily standard deviation:", std_dev_daily_returns * 100, "%")
+    print("Daily Sharpe:", daily_sharpe)
+    print("Anual Sharpe:", sharpe)
     
-    return yearly_data, sharpe
+    return yearly_data, sharpe, total_return
 
 def calculate_max_drawdown(df):
     df['Rolling Max'] = df['Portfolio Value'].cummax()
@@ -290,10 +303,11 @@ def portfolio_return(df):
     df['Amount Invested'] = pd.to_numeric(df['Amount Invested'], errors='coerce')
     df['PnL'] = pd.to_numeric(df['PnL'], errors='coerce')
     grouped_df = df.groupby('dateExecuted').agg({'Amount Invested': 'sum', 'PnL': 'sum'}).reset_index()
+
     grouped_df['Cumulative PnL'] = grouped_df['PnL'].cumsum()
     grouped_df['Portfolio Value'] = grouped_df['Cumulative PnL'] + initial_investment
-    grouped_df['Return'] = grouped_df['Portfolio Value'] / initial_investment
-    return grouped_df, grouped_df['Return'].iloc[-1] - 1
+    grouped_df['Return'] = grouped_df['Portfolio Value'].pct_change()
+    return grouped_df
 
 def market_beta(df):
     # Convert date column to datetime
@@ -359,7 +373,7 @@ def plot_pnl(df):
     sp = sp[(sp['Date'] >= min_date) & (sp['Date'] <= max_date)]  # Filter S&P 500 data to match the portfolio time range
     scale_fct = sp['Open'].iloc[0] / df['Portfolio Value'].iloc[0] # Help vizualize porfolio vs S&P by scaling starting point
    
-    print(sp)
+    # print(sp)
     # Plotting both datasets
     plt.figure(figsize=(12, 6))  # Set the figure size
     plt.plot(df['dateExecuted'], df['Portfolio Value'], 
@@ -384,9 +398,11 @@ def append_to_csv(dataframe, filename):
 if __name__ == "__main__":
 
     '''
-    Adjust portfolio below by manually entering ticker. See data folder for avaible tickers.
+    Adjust portfolio below by manually entering ticker. See data folder for available tickers.
     '''
-    symbols = ["AAPL", "BLK", "CVX", "D", "DE", "LUV", "NFLX", "NKE", "PG", "WMT", "AMZN", "MSFT", "BAC", "JPM", "V", "MA", "INTC", "AMD", "CSCO", "PFE", "GILD", "ADBE", "DIS", "IBM", "ORCL", "XOM", "BA"]
+    # symbols = ["AAPL", "BLK", "CVX", "D", "DE", "LUV", "NFLX", "NKE", "PG", "WMT", "AMZN", "MSFT", "BAC", "JPM", "V", "MA", "INTC", "AMD", "CSCO", "PFE", "GILD", "ADBE", "DIS", "IBM", "ORCL", "XOM", "BA"]
+    symbols = ["AAPL", "ABT", "ADBE", "AMD", "AMZN", "AXP", "BA", "BAC", "BLK", "CAT", "CFG","CRWD", "CSCO", "CVX", "D", "DD", "DE", "DIS", "GILD", "GOOGL","GS", "IBM", "INTC", "JNJ", "JPM", "LMT", "LUV", "MA", "MRK", "MSFT", "NEE", "NEM", "NFLX", "NKE", "ORCL", "PFE", "PG", "RHP", "SBUX", "SO", "SPG", "TGT", "TM", "V", "WMT", "WYNN", "XOM"]
+
     #holding_period_type = get_input_period()
 
     # if holding_period_type == "d":
@@ -394,55 +410,59 @@ if __name__ == "__main__":
     # if holding_period_type == "m":
     #     holding_period = int(input("Enter integer number of minutes:"))
     
-    #strategies = ['L_s_strategy', 'L_if_strategy', 'L_strategy', 'S_if_strategy', 'S_strategy']
-    strategies = ['L_s_strategy']
+    strategies = ['L_s_strategy', 'L_if_strategy', 'L_strategy', 'S_if_strategy', 'S_strategy']
+    # strategies = ['S_if_strategy']
+    holding_types = ['d', 'm']
+    for holding_period_type in holding_types: #run for days and minutes
+        if holding_period_type == 'd':
+            length = 31
+        else:
+            length = 28
+        for strat in strategies:   #loop through each strategy
+            for i in range(length): #run each strategy for every interval 1-30 days/ 1-20 min then up to 1hr by 5 min
+                if holding_period_type == 'm' and i > 19: #start counting by 5 after 20 min
+                    holding_period = (i-20)*5 + 20
+                else:
+                    holding_period = i + 1
+            # holding_period = 1
+                all_pnl = []
 
-    holding_period_type = 'd'
-    # for strat in strategies:
-    #     for i in range(1):
-    holding_period = 10
-    all_pnl = []
+                for symbol in symbols:
+                    prices_df = fetch_spot_from_h5(symbol, holding_period_type) #read in price data
+                    trading_log = return_on_earning(symbol, prices_df, holding_period_type, holding_period, strat) #make trades based on strategy
+                    all_pnl.append(trading_log) #log every trade across all tickers
 
-    strat = 'L_s_strategy'
+                combined_pnl = pd.concat(all_pnl)
+                combined_pnl = calculate_cumulative_pnl(combined_pnl) #sort by date/track cumallative returns
+                portfolio_pnl = portfolio_return(combined_pnl) #group by day
+                portfolio_pnl.to_csv("Portfolio_Return.csv", index=False)
 
-    for symbol in symbols:
-        prices_df = fetch_spot_from_h5(symbol, holding_period_type)
-        trading_log = return_on_earning(symbol, prices_df, holding_period_type, holding_period, strat)
-        all_pnl.append(trading_log)
+                max_drawdown = calculate_max_drawdown(portfolio_pnl)
+                profit_per_contract = calculate_profit_per_contract(combined_pnl, portfolio_pnl, holding_period_type, holding_period)
+                yearly, sharpe, returns = calculate_sharpe_ratio(portfolio_pnl, holding_period_type, holding_period, combined_pnl)
+                beta = market_beta(portfolio_pnl)
 
-    combined_pnl = pd.concat(all_pnl)
-    combined_pnl = calculate_cumulative_pnl(combined_pnl)
-    portfolio_pnl, returns = portfolio_return(combined_pnl)
-    portfolio_pnl.to_csv("Portfolio_Return.csv", index=False)
+                yearly.to_csv("yearly.csv")
 
-    max_drawdown = calculate_max_drawdown(portfolio_pnl)
-    profit_per_contract = calculate_profit_per_contract(combined_pnl, portfolio_pnl, holding_period_type, holding_period)
-    yearly, sharpe = calculate_sharpe_ratio(portfolio_pnl)
+                print(f"Maximum Drawdown: {max_drawdown * 100:.2f}%")
+                print(f"Profit Per Contract is: ${profit_per_contract:.2f}")
+                print(f"Sharpe Ratio: {sharpe:.2f}")
+                print(f"Return: {returns * 100:.5f}%")
+                print(f"Beta: {beta:.5f}")
 
-    yearly.to_csv("yearly_pls.csv")
+                combined_pnl.to_csv("Combined_Portfolio_PnL.csv", index=False)
+                
+                analytics_df = pd.DataFrame([{
+                    "Strategy": strat,
+                    "Holding Period": holding_period_type,
+                    "Period Length": holding_period,
+                    "Returns": returns,
+                    "Maximum Drawdown": max_drawdown,
+                    "Sharpe Ratio": sharpe,
+                    "Profit Per Contract": profit_per_contract,
+                    "Portfolio Beta": beta
+                }])
 
-    beta = market_beta(portfolio_pnl)
+                append_to_csv(analytics_df, "Performance_Metrics.csv") # Append results to CSV
 
-    print(f"Maximum Drawdown: {max_drawdown * 100:.2f}%")
-    print(f"Profit Per Contract is: ${profit_per_contract:.2f}")
-    print(f"Sharpe Ratio: {sharpe:.2f}")
-    print(f"Return: {returns * 100:.5f}%")
-    print(beta)
-
-    combined_pnl.to_csv("Combined_Portfolio_PnL.csv", index=False)
-    
-    analytics_df = pd.DataFrame([{
-        "Strategy": strat,
-        "Holding Period": holding_period_type,
-        "Period Length": holding_period,
-        "Returns": returns,
-        "Maximum Drawdown": max_drawdown,
-        "Sharpe Ratio": sharpe,
-        "Profit Per Contract": profit_per_contract,
-        "Portfolio Beta": beta
-    }])
-
-    # Append results to CSV
-    append_to_csv(analytics_df, "Performance_Metrics.csv")
-
-    plot_pnl(portfolio_pnl)
+                # plot_pnl(portfolio_pnl)
