@@ -1,19 +1,19 @@
-#Evaluating Investment Strategies Following Quarterly Earnings Announcements
+# Evaluating Investment Strategies Following Quarterly Earnings Announcements
 Michael Houk
 
-##1. Objective
+## 1. Objective
 
 I analyzed five years of price data and quarterly earnings announcements to identify a viable investment strategy based on whether companies exceeded or missed their earnings expectations.
 
-##2. Research Question
+## 2. Research Question
 
 How effective of a strategy is shorting a stock when the company misses earnings and buying the stock when it beats earnings? What time horizons is this viable for?
 
-##3. Data
+## 3. Data
 
 The historical price data I used, for both daily and minute levels, were proprietary datasets provided by Avi Thacker. Earnings announcement data was collected from the Alpha Vantage API. To test these strategies, I created a portfolio of 50 random companies.
 
-##4. Procedure
+## 4. Procedure
 
 
 To test this main strategy, going short when a company reports earnings lower than expected and going long when earnings beat expectations, I compared it to four other control strategies. Below is the total list of strategies that were compared, and the label I’ve assigned to each:
@@ -29,7 +29,7 @@ Each of these strategies was analyzed on minute and day holding periods. The min
 The starting date of the trade was determined by the time of the announcement. If the earrings were reported post-market hours, the trade was initiated on the next available trading day. If earnings were pre-market hours, the trade was initiated that day. 
 
 
-##5. Execution
+## 5. Execution
 
 I created a backtesting framework in Python to track portfolio success for each of the 5 strategies. I used the Pandas library for data manipulation and visualization. The code is available at this repository: https://github.com/m1keh0uk/earnignsbacktester.git 
 
